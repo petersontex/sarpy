@@ -1,10 +1,11 @@
 __classification__ = "UNCLASSIFIED"
 __author__ = "Tex Peterson"
 
+from collections import OrderedDict
+from datetime import datetime, date
 import numpy as np
 import unittest
 import xml.etree.ElementTree as ET
-from collections import OrderedDict
 
 import sarpy.io.xml.base as base
 
@@ -436,15 +437,15 @@ class TestParseInt(unittest.TestCase):
     def test_parse_int_value_param_is_string_1_success(self):
         self.assertEqual(base.parse_int('1', "Bob", "base"), 1)
 
-    def test_parse_int_value_param_is_string_non_int_success(self):
-        with self.assertRaisesRegex(ValueError, r"invalid literal for " + \
-                                    "int\(\) with base 10: 'Bob'"):
+    def test_parse_int_value_param_is_string_non_int_fail(self):
+        with self.assertRaisesRegex(ValueError, r"could not convert string " + \
+                                    "to float: 'Bob'"):
             assert(base.parse_int('Bob', "Bob", "base") == 1)
 
-    def test_parse_int_value_param_is_list_non_int_success(self):
-        with self.assertRaisesRegex(TypeError, r"int\(\) argument must be a " + \
-                                    "string, a bytes-like object or a real " + \
-                                    "number, not 'list'"):
+    def test_parse_int_value_param_is_list_non_int_fail(self):
+        with self.assertRaisesRegex(TypeError, r"field Bob of class str " + \
+                                    "requires an integer value, got <class " + \
+                                    "'list'>"):
             assert(base.parse_int([3.5], "Bob", "base") == 1)
 
 # ********************
@@ -488,14 +489,14 @@ class TestParseFloat(unittest.TestCase):
     def test_parse_float_value_param_is_string_1dot5_success(self):
         self.assertEqual(base.parse_float('1.5', "Bob", "base"), 1.5)
 
-    def test_parse_float_value_param_is_string_non_int_success(self):
-        with self.assertRaisesRegex(ValueError, r"could not convert string " + \
-                                    "to float: 'Bob'"):
+    def test_parse_float_value_param_is_string_non_int_fail(self):
+        with self.assertRaisesRegex(TypeError, r"field Bob of class str " + \
+                                    "requires a float value, got <class 'str'>"):
             base.parse_float('Bob', "Bob", "base")
 
-    def test_parse_float_value_param_is_list_non_int_success(self):
-        with self.assertRaisesRegex(TypeError, r"float\(\) argument must be " + \
-                                    "a string or a real number, not 'list'"):
+    def test_parse_float_value_param_is_list_non_int_fail(self):
+        with self.assertRaisesRegex(TypeError, r"field Bob of class str " + \
+                                    "requires a float value, got <class 'list'>"):
             base.parse_float([3.5], "Bob", "base")
 
 # ********************
@@ -584,14 +585,103 @@ class TestParseComplex(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"Cannot convert dict {'real': 4, 'imag': None} to a complex number for field Bob of class str."):
             base.parse_complex({"real":4, "imag":None}, "Bob", "base")
 
-    def test_parse_complex_value_param_is_string_non_int_success(self):
-        with self.assertRaisesRegex(ValueError, r"complex\(\) arg is a malformed string"):
+    def test_parse_complex_value_param_is_string_non_int_fail(self):
+        with self.assertRaisesRegex(TypeError, r"Field Bob of class str " + \
+                                    "expects a complex value, got <class 'str'>"):
             base.parse_complex('Bob', "Bob", "base")
 
-    def test_parse_complex_value_param_is_list_non_int_success(self):
-        with self.assertRaisesRegex(TypeError, r"complex\(\) first argument must be a string or a number, not 'list'"):
+    def test_parse_complex_value_param_is_list_non_int_fail(self):
+        with self.assertRaisesRegex(TypeError, r"Field Bob of class str " + \
+                                    "expects a complex value, got <class 'list'>"):
             base.parse_complex([3.5], "Bob", "base")
 
+# ********************
+# parse_datetime tests
+# ********************
+
+class ParseDatetimeDummyInstance:
+    pass
+
+class TestParseDatetime(unittest.TestCase):
+    
+    def test_no_params_fail(self):
+        with self.assertRaisesRegex(TypeError, r"parse_datetime\(\) missing " + \
+                                    "3 required positional arguments: 'value'," + \
+                                    " 'name', and 'instance'$"):
+            base.parse_datetime()
+        
+    def test_value_param_only_fail(self):
+        with self.assertRaisesRegex(TypeError, r"parse_datetime\(\) missing 2 " + \
+                                    "required positional arguments: 'name' " + \
+                                    "and 'instance'$"):
+            base.parse_datetime("Test")
+
+    def test_missing_instance_param_fail(self):
+        with self.assertRaisesRegex(TypeError, r"parse_datetime\(\) missing 1 " + \
+                                    "required positional argument: 'instance'$"):
+            base.parse_datetime("Test", "Bob")
+
+    def test_none_returns_none(self):
+        self.assertIsNone(base.parse_datetime(None, "dt", 
+                                              ParseDatetimeDummyInstance()))
+
+    def test_numpy_datetime64_pass_through(self):
+        dt = np.datetime64('2023-01-01T12:00:00')
+        self.assertEqual(base.parse_datetime(dt, "dt", 
+                                             ParseDatetimeDummyInstance()), dt)
+
+    def test_string_with_Z(self):
+        dt_str = "2023-01-01T12:00:00Z"
+        result = base.parse_datetime(dt_str, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+        self.assertEqual(result, np.datetime64("2023-01-01T12:00:00"))
+
+    def test_string_without_Z(self):
+        dt_str = "2023-01-01T12:00:00"
+        result = base.parse_datetime(dt_str, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+        self.assertEqual(result, np.datetime64("2023-01-01T12:00:00"))
+
+    def test_elementtree_element(self):
+        elem = ET.Element("Test")
+        elem.text = "2023-01-01T12:00:00"
+        result = base.parse_datetime(elem, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+        self.assertEqual(result, np.datetime64("2023-01-01T12:00:00"))
+
+    def test_date_object(self):
+        d = date(2023, 1, 1)
+        result = base.parse_datetime(d, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+        self.assertEqual(result, np.datetime64("2023-01-01"))
+
+    def test_datetime_object(self):
+        d = datetime(2023, 1, 1, 12, 0, 0)
+        result = base.parse_datetime(d, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+        self.assertEqual(result, np.datetime64("2023-01-01T12:00:00"))
+
+    def test_numpy_int64(self):
+        val = np.int64(1700000000)
+        result = base.parse_datetime(val, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+
+    def test_numpy_float64(self):
+        val = np.float64(1700000000)
+        result = base.parse_datetime(val, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+
+    def test_int(self):
+        val = 1700000000
+        result = base.parse_datetime(val, "dt", ParseDatetimeDummyInstance())
+        self.assertIsInstance(result, np.datetime64)
+
+    def test_invalid_type_raises(self):
+        with self.assertRaisesRegex(TypeError, r"Field dt for class " + \
+                                    "ParseDatetimeDummyInstance expects " + \
+                                    "datetime convertible input, and got " + \
+                                    "<class 'list'>$"):
+            base.parse_datetime([2023, 1, 1], "dt", ParseDatetimeDummyInstance())
 
 # ********************
 # parse_serializable tests
@@ -737,6 +827,10 @@ class TestParseSerializable(unittest.TestCase):
                                     ParseSerializableDummyInstance(), 
                                     ParseSerializableDummyType)
 
+# ********************
+# parse_serializable_array tests
+# ********************
+
 class ParseSerializableArrayDummyArrayable(base.Arrayable):
     def __init__(self, arr):
         self.arr = np.array(arr)
@@ -831,7 +925,7 @@ class TestParseSerializableArray(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"Attribute test of array " + \
                                     "type functionality belonging to class " + \
                                     "ParseSerializableArrayDummyInstance got " + \
-                                    "an ndarray of dtype int64,and child " + \
+                                    "an ndarray of dtype int64, and child " + \
                                     "type is not a subclass of Arrayable.$"):
             base.parse_serializable_array(arr, 'test', 
                                           ParseSerializableArrayDummyInstance(), 
@@ -847,7 +941,7 @@ class TestParseSerializableArray(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"Attribute test of array " + \
                                     "type functionality belonging to class " + \
                                     "ParseSerializableArrayDummyInstance got " + \
-                                    "an ndarray of shape \(2, 2\),but requires " + \
+                                    "an ndarray of shape \(2, 2\), but requires " + \
                                     "a one dimensional array.$"):
             base.parse_serializable_array(arr, 'test', 
                                           ParseSerializableArrayDummyInstance(), 
@@ -947,6 +1041,10 @@ class TestParseSerializableArray(unittest.TestCase):
                                             'child')
         self.assertIsInstance(arr, np.ndarray)
         self.assertEqual(arr.size, 0)
+
+# ********************
+# parse_serializable_list tests
+# ********************
 
 class ParseSerializableListDummySerializable:
     @classmethod
@@ -1070,6 +1168,9 @@ class TestParseSerializableList(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 0)
 
+# ********************
+# parse_parameters_collection tests
+# ********************
 
 class ParseParametersCollectionDummyInstance:
     pass
