@@ -4,6 +4,7 @@ This module contains the base objects for use in base xml/serializable functiona
 
 __classification__ = "UNCLASSIFIED"
 __author__ = "Thomas McCullough"
+## Optimized by Tex Peterson using Copilot.
 
 import copy
 import json
@@ -36,28 +37,23 @@ DEFAULT_STRICT = False
 
 def get_node_value(nod: ElementTree.Element) -> Optional[str]:
     """
-    XML parsing helper for extracting text value from an ElementTree Element. 
-    No error checking performed.
+    Extracts and returns the stripped text value from an ElementTree Element.
+    Returns None if the text is None or only whitespace.
 
     Parameters
     ----------
     nod : ElementTree.Element
-        the xml dom element
+        The XML DOM element.
 
     Returns
     -------
-    str
-        the string value of the node.
+    Optional[str]
+        The stripped string value of the node, or None.
     """
-
-    if nod.text is None:
-        return None
-
-    val = nod.text.strip()
-    if len(val) == 0:
-        return None
-    else:
-        return val
+    if nod.text:
+        val = nod.text.strip()
+        return val if val else None
+    return None 
 
 
 def create_new_node(
@@ -82,14 +78,12 @@ def create_new_node(
     """
 
     if parent is None:
-        parent = doc.getroot()  # what if there is no root?
-    if parent is None:
-        element = ElementTree.Element(tag)
-        # noinspection PyProtectedMember, PyUnresolvedReferences
-        doc._setroot(element)
-        return element
-    else:
-        return ElementTree.SubElement(parent, tag)
+        parent = doc.getroot()
+        if parent is None:
+            element = ElementTree.Element(tag)
+            doc._setroot(element)
+            return element
+    return ElementTree.SubElement(parent, tag)
 
 
 def create_text_node(
@@ -109,7 +103,8 @@ def create_text_node(
     value : str
         The value for the new element.
     parent : None|ElementTree.Element
-        The parent element for the new element. Defaults to the document root element if unspecified.
+        The parent element for the new element. Defaults to the document root 
+        element if unspecified.
 
     Returns
     -------
@@ -118,7 +113,7 @@ def create_text_node(
     """
 
     node = create_new_node(doc, tag, parent=parent)
-    node.text = value
+    node.text = str(value)
     return node
 
 
@@ -128,26 +123,27 @@ def find_first_child(
         xml_ns: Optional[Dict[str, str]] = None,
         ns_key: Optional[str]            = None) -> ElementTree.Element:
     """
-    Finds the first child node
+    Finds the first child node with the given tag, optionally using XML namespaces.
 
     Parameters
     ----------
-    node : ElementTree.Element
-    tag : str
-    xml_ns : None|dict XML namespace of the node in question
-    ns_key : None|str  Namespace key to use to preface the tag
+    node   : ElementTree.Element
+    tag    : str
+    xml_ns : None|dict 
+        XML namespace mapping.
+    ns_key : None|str  
+        Namespace key to use to preface the tag
 
     Returns
     -------
     ElementTree.Element
+        The first matching child element, or None if not found.
     """
 
     if xml_ns is None:
         return node.find(tag)
-    elif ns_key is None:
-        return node.find('default:{}'.format(tag), xml_ns)
-    else:
-        return node.find('{}:{}'.format(ns_key, tag), xml_ns)
+    key = ns_key if ns_key is not None else 'default'
+    return node.find(f"{key}:{tag}", xml_ns)
 
 
 def find_children(
@@ -156,22 +152,26 @@ def find_children(
         xml_ns: Optional[Dict[str, str]] = None,
         ns_key: Optional[str]            = None):
     """
-    Finds the collection of children nodes
+    Finds the collection of children nodes with the given tag, optionally using 
+    XML namespaces.
 
     Parameters
     ----------
-    node : ElementTree.Element
-    tag : str
+    node   : ElementTree.Element
+    tag    : str
     xml_ns : None|dict
     ns_key : None|str
+
+    Returns
+    -------
+    list[ElementTree.Element]
+        List of matching child elements.
     """
 
     if xml_ns is None:
         return node.findall(tag)
-    elif ns_key is None:
-        return node.findall('default:{}'.format(tag), xml_ns)
-    else:
-        return node.findall('{}:{}'.format(ns_key, tag), xml_ns)
+    key = ns_key if ns_key is not None else 'default'
+    return node.findall(f"{key}:{tag}", xml_ns)
 
 
 def parse_xml_from_string(xml_string):
@@ -185,30 +185,31 @@ def parse_xml_from_string(xml_string):
     Returns
     -------
     root_node: ElementTree.Element
-    xml_ns: Dict[str, str]
+    xml_ns   : Dict[str, str]
     """
 
     xml_string = bytes_to_string(xml_string, encoding='utf-8')
 
     root_node = ElementTree.fromstring(xml_string)
-    # define the namespace dictionary
+    # Build namespace dictionary
     xml_ns = dict([node for _, node in ElementTree.iterparse(StringIO(xml_string), events=('start-ns',))])
-    if len(xml_ns.keys()) == 0:
+    if not xml_ns:
         xml_ns = None
     elif '' in xml_ns:
         xml_ns['default'] = xml_ns['']
     else:
-        # default will be the namespace for the root node
-        namespace_match = re.match(r'\{.*\}', root_node.tag)
-        if namespace_match is None:
-            raise ValueError('Trouble finding the default namespace for tag {}'.format(root_node.tag))
-        xml_ns['default'] = namespace_match[0][1:-1]
+        # Try to extract default namespace from root tag
+        match = re.match(r'\{(.+)\}', root_node.tag)
+        if match:
+            xml_ns['default'] = match.group(1)
+        else:
+            raise ValueError(f"Trouble finding the default namespace for tag {root_node.tag}")
     return root_node, xml_ns
 
 
 def parse_xml_from_file(xml_file_path):
     """
-    Parse the ElementTree root node and xml namespace dict from a xml file.
+    Parse the ElementTree root node and xml namespace dict from an XML file.
 
     Parameters
     ----------
@@ -217,7 +218,7 @@ def parse_xml_from_file(xml_file_path):
     Returns
     -------
     root_node: ElementTree.Element
-    xml_ns: Dict[str, str]
+    xml_ns   : Dict[str, str]
     """
 
     with open(xml_file_path, 'rb') as fi:
@@ -227,21 +228,21 @@ def parse_xml_from_file(xml_file_path):
 
 def validate_xml_from_string(xml_string, xsd_path, output_logger=None):
     """
-    Validate a xml string against a given xsd document.
+    Validate an XML string against a given XSD document.
 
     Parameters
     ----------
     xml_string : str|bytes
-    xsd_path : str
-        The path to the relevant xsd document.
+    xsd_path   : str
+        The path to the relevant XSD document.
     output_logger
         A desired output logger.
 
     Returns
     -------
     bool
-        `True` if valid, `False` otherwise. Failure reasons will be
-        logged at `'error'` level by the module.
+        True if valid, False otherwise. Failure reasons will be logged at 
+        'error' level.
     """
 
     if etree is None:
@@ -253,39 +254,35 @@ def validate_xml_from_string(xml_string, xsd_path, output_logger=None):
     xml_schema = etree.XMLSchema(file=xsd_path)
     validity = xml_schema.validate(xml_doc)
     if not validity:
+        logger_to_use = output_logger if output_logger is not None else logger
         for entry in xml_schema.error_log:
-            msg = 'XML validation error on line {}\n\t{}'.format(
-                entry.line, entry.message.encode('utf-8'))
-            if output_logger is None:
-                logger.error(msg)
-            else:
-                output_logger.error(msg)
+            msg = f"XML validation error on line {entry.line}\n\t{entry.message}"
+            logger_to_use.error(msg)
     return validity
 
 
 def validate_xml_from_file(xml_path, xsd_path, output_logger=None):
     """
-    Validate a xml string against a given xsd document.
+    Validate a XML string against a given XSD document.
 
     Parameters
     ----------
     xml_path : str
-        The path to the relevant xml file
+        The path to the relevant XML file
     xsd_path : str
-        The path to the relevant xsd document.
+        The path to the relevant XSD document.
     output_logger
         A desired output logger.
 
     Returns
     -------
     bool
-        `True` if valid, `False` otherwise. Failure reasons will be
-        logged at `'error'` level by the module.
+        True if valid, False otherwise. Failure reasons will be logged at 
+        'error' level.
     """
 
     with open(xml_path, 'rb') as fi:
         xml_bytes = fi.read()
-
     return validate_xml_from_string(xml_bytes, xsd_path, output_logger=output_logger)
 
 
@@ -295,504 +292,521 @@ def validate_xml_from_file(xml_path, xsd_path, output_logger=None):
 
 def parse_str(value, name, instance):
     """
-    The parse_str function is not a generic string parser. It is a helper 
-    function specifically for parsing values within XML elements in 
-    sarpy.io.xml.base. It's used internally by the library to extract text 
-    values from XML ElementTree objects. 
-    The function is not intended for public use for general string parsing, and 
-    attempting to use it on a simple text string will just return the initial 
-    string as parse_str expects an XML element as its input. 
+    Helper for extracting string values from XML ElementTree objects.
 
     Parameters
     ----------
     value : ElementTree.Element|None|str
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        A string value will return the given string unchanged.
+        The ElementTree.Element entity, None, or a string.
     name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
 
     Returns
     -------
     None | str
-        Returns None if value passed is None. Returns the string passed if value
-        is a string. Returns the string value of a node when passed an 
-        ElementTree.Element
+        Returns None if value is None, the string if value is a string,
+        or the stripped text of an ElementTree.Element.
 
     Raises
     -------
     TypeError
-        When passed a value with a type other than the expected input types.
+        If value is not a supported type.
     """
 
-    if value is None:
-        return None
-    if isinstance(value, str):
+    if value is None or isinstance(value, str):
         return value
-    elif isinstance(value, ElementTree.Element):
+    if isinstance(value, ElementTree.Element):
         node_value = get_node_value(value)
-        return "" if node_value is None else node_value
-    else:
-        raise TypeError(
-            'field {} of class {} requires a string value.'.format(name, instance.__class__.__name__))
+        return node_value if node_value is not None else ""
+    raise TypeError(
+        f'field {name} of class {instance.__class__.__name__} requires a string value.'
+    )
 
 
 def parse_bool(value, name, instance):
     """
-    The parse_bool function is a helper function specifically for parsing boolean
-    values within XML elements in sarpy.io.xml.base. 
-    The function is not intended for public use.
+    Helper for parsing boolean values from XML elements, strings, or numbers.
     
     Parameters
     ----------
     value : ElementTree.Element|None|str[0, 1, true, false]
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        A string value will return the boolean value for the string if it can be 
-        converted to a boolean.
+        The value to parse.
     name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
 
     Returns
     -------
     None | bool
-        Returns None if value passed is None. Returns the boolean value
-        of a node when passed an ElementTree.Element
+        Returns None if value is None. Returns the boolean value otherwise.
 
     Raises
     -------
     ValueError
-        When passed a value with a type other than the expected input types.
+        If value is not a supported type or cannot be converted.
     """
     def parse_string(val):
-        if val.lower() in ['0', 'false']:
+        val_lower = val.lower()
+        if val_lower in ('0', 'false'):
             return False
-        elif val.lower() in ['1', 'true']:
+        elif val_lower in ('1', 'true'):
             return True
-        else:
-            raise ValueError(
-                'Boolean field {} of class {} cannot assign from string value {}. '
-                'It must be one of ["0", "false", "1", "true"]'.format(name, instance.__class__.__name__, val))
+        raise ValueError(
+            f'Boolean field {name} of class {instance.__class__.__name__} cannot assign from string value {val}. '
+            'It must be one of ["0", "false", "1", "true"]'
+        )
 
     if value is None:
         return None
     if isinstance(value, bool):
         return value
-    elif isinstance(value, int) or isinstance(value, numpy.bool_):
+    if isinstance(value, (int, numpy.bool_)):
         return bool(value)
-    elif isinstance(value, ElementTree.Element):
-        # from XML deserialization
-        return parse_string(get_node_value(value))
-    elif isinstance(value, str):
+    if isinstance(value, ElementTree.Element):
+        node_val = get_node_value(value)
+        return parse_string(node_val)
+    if isinstance(value, str):
         return parse_string(value)
-    else:
-        raise ValueError('Boolean field {} of class {} cannot assign from type {}.'.format(
-            name, instance.__class__.__name__, type(value)))
+    raise ValueError(
+        f'Boolean field {name} of class {instance.__class__.__name__} cannot assign from type {type(value)}.'
+    )
 
 
 def parse_int(value, name, instance):
     """
-    The parse_int function is a helper function specifically for parsing integer
-    values within XML elements in sarpy.io.xml.base. 
-    The function is not intended for public use. This function is recursive.
-    
+    Helper for parsing integer values from XML elements, strings, or numbers.
+
     Parameters
     ----------
     value : ElementTree.Element|None|int|str
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        int returns the integer.
-        A string value will return the integer value for the string if it can be 
-        converted to an integer.
-    name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
 
     Returns
     -------
-    None | bool
-        Returns None if value passed is None. Returns the boolean value
-        of a node when passed an ElementTree.Element
+    None | int
+        Returns None if value is None. Returns the integer value otherwise.
 
     Raises
-    -------
-    TypeError
-        When passed a value with a type other than the expected input types.
+    ------
+    TypeError, ValueError
+        If value is not a supported type or cannot be converted.
     """
     if value is None:
         return None
     if isinstance(value, int):
         return value
-    elif isinstance(value, ElementTree.Element):
-        # from XML deserialization
+    if isinstance(value, ElementTree.Element):
         return parse_int(get_node_value(value), name, instance)
-    elif isinstance(value, str):
+    if isinstance(value, str):
         try:
             return int(value)
-        except ValueError as e:
+        except ValueError:
             logger.warning(
-                'Got non-integer value {}\n\t'
-                'for integer valued field {} of class {}'.format(
-                    value, name, instance.__class__.__name__))
-            # noinspection PyBroadException
+                f'Got non-integer value {value} for integer valued field {name} of class {instance.__class__.__name__}'
+            )
             try:
                 return int(float(value))
             except Exception:
-                raise e
-    else:
-        # user or json deserialization
+                raise
+    # For other types (e.g., numpy types, float, etc.)
+    try:
         return int(value)
+    except Exception as e:
+        raise TypeError(
+            f'field {name} of class {instance.__class__.__name__} requires an integer value, got {type(value)}'
+        ) from e
 
 
 # noinspection PyUnusedLocal
 def parse_float(value, name, instance):
     """
-    The parse_float function is a helper function specifically for parsing float
-    values within XML elements in sarpy.io.xml.base. 
-    The function is not intended for public use. This function is recursive.
+    Helper for parsing float values from XML elements, strings, or numbers.
     
     Parameters
     ----------
     value : ElementTree.Element|None|float|str
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        Float returns a float.
-        A string value will return the float value for the string if it can be 
-        converted to a float.
+        The value to parse.
     name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
 
     Returns
     -------
     None | bool
-        Returns None if value passed is None. Returns the float value
-        of a node when passed an ElementTree.Element
+        Returns None if value is None. Returns the float value otherwise.
 
     Raises
     -------
     TypeError
-        When passed a value with a type other than the expected input types.
+        If value is not a supported type or cannot be converted.
     """
     if value is None:
         return None
     if isinstance(value, float):
         return value
-    elif isinstance(value, ElementTree.Element):
-        # from XML deserialization
-        return float(get_node_value(value))
-    else:
-        # user or json deserialization
+    if isinstance(value, ElementTree.Element):
+        return parse_float(get_node_value(value), name, instance)
+    try:
         return float(value)
+    except Exception as e:
+        raise TypeError(
+            f'field {name} of class {instance.__class__.__name__} requires a float value, got {type(value)}'
+        ) from e
 
 
 def parse_complex(value, name, instance):
     """
-    The parse_complex function is a helper function specifically for parsing 
-    complex number (numbers with both a real and an imaginary component) values 
-    within XML elements in sarpy.io.xml.base. 
-    The function is not intended for public use. This function is recursive.
+    Helper for parsing complex numbers from XML elements, dicts, or other types.
     
     Parameters
     ----------
     value : ElementTree.Element|None|complex|dict
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        complex returns a complex.
-        dict is a dictionary representation of a complex number.
+        The value to parse.
     name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
 
     Returns
     -------
     None | bool
-        Returns None if value passed is None. Returns the complex value
-        of a node when passed an ElementTree.Element
+        Returns None if value is None. Returns the complex value otherwise.
 
     Raises
     -------
     TypeError
-        When passed a value with a type other than the expected input types.
+        If value is not a supported type or cannot be converted.
     """
     if value is None:
         return None
     if isinstance(value, complex):
         return value
-    elif isinstance(value, ElementTree.Element):
+    if isinstance(value, ElementTree.Element):
         xml_ns = getattr(instance, '_xml_ns', None)
-        # noinspection PyProtectedMember
+        xml_ns_key = getattr(instance, '_xml_ns_key', None)
         if hasattr(instance, '_child_xml_ns_key') and name in instance._child_xml_ns_key:
-            # noinspection PyProtectedMember
             xml_ns_key = instance._child_xml_ns_key[name]
-        else:
-            xml_ns_key = getattr(instance, '_xml_ns_key', None)
-        # from XML deserialization
         rnode = find_children(value, 'Real', xml_ns, xml_ns_key)
         inode = find_children(value, 'Imag', xml_ns, xml_ns_key)
-
         if len(rnode) != 1:
             raise ValueError(
-                'There must be exactly one Real component of a complex type node '
-                'defined for field {} of class {}.'.format(name, instance.__class__.__name__))
+                f"There must be exactly one Real component of a complex type node defined for field {name} of class {instance.__class__.__name__}."
+            )
         if len(inode) != 1:
             raise ValueError(
-                'There must be exactly one Imag component of a complex type node '
-                'defined for field {} of class {}.'.format(name, instance.__class__.__name__))
+                f"There must be exactly one Imag component of a complex type node defined for field {name} of class {instance.__class__.__name__}."
+            )
         real = float(get_node_value(rnode[0]))
         imag = float(get_node_value(inode[0]))
         return complex(real, imag)
-    elif isinstance(value, dict):
-        # from json deserialization
+    if isinstance(value, dict):
         real = None
         for key in ['re', 'real', 'Real']:
-            real = value.get(key, real)
+            if key in value:
+                real = value[key]
+                break
         imag = None
         for key in ['im', 'imag', 'Imag']:
-            imag = value.get(key, imag)
+            if key in value:
+                imag = value[key]
+                break
         if real is None or imag is None:
             raise ValueError(
-                'Cannot convert dict {} to a complex number for field {} of '
-                'class {}.'.format(value, name, instance.__class__.__name__))
+                f"Cannot convert dict {value} to a complex number for field {name} of class {instance.__class__.__name__}."
+            )
         return complex(real, imag)
-    else:
-        # from user - I can't imagine that this would ever work
+    try:
         return complex(value)
+    except Exception as e:
+        raise TypeError(
+            f"Field {name} of class {instance.__class__.__name__} expects a complex value, got {type(value)}"
+        ) from e
 
 
 def parse_datetime(value, name, instance, units='us'):
     """
-    The parse_datetime function is a helper function specifically for parsing 
-    datetime values within XML elements in sarpy.io.xml.base. 
-    The function is not intended for public use. This function is recursive.
-    
+    Helper for parsing datetime values from various types.
+
     Parameters
     ----------
-    value : ElementTree.Element|None|datetime|dict
-        The ElementTree.Element entity that you want to get the value from.
-        None returns None.
-        datetime returns a datetime.
-        A string value will return the datetime value for the string if it can be 
-        converted to a datetime.
-    name : str 
-        Name of the field to return the value of. This is only used in the 
-        raised error message
+    value : None|str|ElementTree.Element|date|datetime|numpy.datetime64|int|float|numpy.int64|numpy.float64
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
     instance :
-        The class of the variable. This is only used in the raised error message.
+        The class of the variable (used in error message).
+    units : str
+        Units for numpy.datetime64 conversion (default 'us').
 
     Returns
     -------
-    None | bool
-        Returns None if value passed is None. Returns the float value
-        of a node when passed an ElementTree.Element
+    None | numpy.datetime64
+        Returns None if value is None. Returns the datetime64 value otherwise.
 
     Raises
-    -------
+    ------
     TypeError
-        When passed a value with a type other than the expected input types.
+        If value is not a supported type or cannot be converted.
     """
     if value is None:
         return None
     if isinstance(value, numpy.datetime64):
         return value
-    elif isinstance(value, str):
-        # handle Z timezone identifier explicitly - any timezone identifier is deprecated
-        if value[-1] == 'Z':
+    if isinstance(value, str):
+        # handle Z timezone identifier explicitly
+        if value.endswith('Z'):
             return numpy.datetime64(value[:-1], units)
-        else:
-            return numpy.datetime64(value, units)
-    elif isinstance(value, ElementTree.Element):
-        # from XML deserialization - extract the string
+        return numpy.datetime64(value, units)
+    if isinstance(value, ElementTree.Element):
         return parse_datetime(get_node_value(value), name, instance, units=units)
-    elif isinstance(value, (date, datetime, numpy.int64, numpy.float64)):
+    if isinstance(value, (date, datetime)):
         return numpy.datetime64(value, units)
-    elif isinstance(value, int):
-        # this is less safe, because the units are unknown...
+    if isinstance(value, (numpy.int64, numpy.float64)):
+        return numpy.datetime64(int(value.item()), units)
+    if isinstance(value, int):
         return numpy.datetime64(value, units)
-    else:
-        raise TypeError(
-            'Field {} for class {} expects datetime convertible input, and '
-            'got {}'.format(name, instance.__class__.__name__, type(value)))
+    raise TypeError(
+        f'Field {name} for class {instance.__class__.__name__} expects datetime convertible input, and got {type(value)}'
+    )
 
 
 def parse_serializable(value, name, instance, the_type):
+    """
+    Helper for parsing a serializable object from various input types.
+
+    Parameters
+    ----------
+    value : None|the_type|dict|ElementTree.Element|numpy.ndarray|list|tuple
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
+    instance :
+        The class of the variable (used in error message).
+    the_type :
+        The expected serializable type.
+
+    Returns
+    -------
+    the_type instance or None
+
+    Raises
+    ------
+    TypeError
+        If value is not a supported type or cannot be converted.
+    """
     if value is None:
         return None
     if isinstance(value, the_type):
         return value
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         return the_type.from_dict(value)
-    elif isinstance(value, ElementTree.Element):
+    if isinstance(value, ElementTree.Element):
         xml_ns = getattr(instance, '_xml_ns', None)
+        xml_ns_key = None
         if hasattr(instance, '_child_xml_ns_key'):
-            # noinspection PyProtectedMember
             xml_ns_key = instance._child_xml_ns_key.get(name, getattr(instance, '_xml_ns_key', None))
         else:
             xml_ns_key = getattr(instance, '_xml_ns_key', None)
         return the_type.from_node(value, xml_ns, ns_key=xml_ns_key)
-    elif isinstance(value, (numpy.ndarray, list, tuple)):
+    if isinstance(value, (numpy.ndarray, list, tuple)):
         if issubclass(the_type, Arrayable):
             return the_type.from_array(value)
-        else:
-            raise TypeError(
-                'Field {} of class {} is of type {} (not a subclass of Arrayable) and '
-                'got an argument of type {}.'.format(name, instance.__class__.__name__, the_type, type(value)))
-    else:
         raise TypeError(
-            'Field {} of class {} is expecting type {}, but got an instance of incompatible '
-            'type {}.'.format(name, instance.__class__.__name__, the_type, type(value)))
+            f'Field {name} of class {instance.__class__.__name__} is of type {the_type} (not a subclass of Arrayable) and '
+            f'got an argument of type {type(value)}.'
+        )
+    raise TypeError(
+        f'Field {name} of class {instance.__class__.__name__} is expecting type {the_type}, but got an instance of incompatible type {type(value)}.'
+    )
 
 
 def parse_serializable_array(value, name, instance, child_type, child_tag):
+    """
+    Helper for parsing an array of serializable objects from various input types.
+
+    Parameters
+    ----------
+    value : None|child_type|numpy.ndarray|ElementTree.Element|list|tuple
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
+    instance :
+        The class of the variable (used in error message).
+    child_type :
+        The expected serializable type for array elements.
+    child_tag : str
+        The XML tag for child elements.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of child_type objects.
+
+    Raises
+    ------
+    TypeError, ValueError
+        If value is not a supported type or cannot be converted.
+    """
     if value is None:
         return None
     if isinstance(value, child_type):
-        # this is the child element
-        return numpy.array([value, ], dtype='object')
-    elif isinstance(value, numpy.ndarray):
+        return numpy.array([value], dtype='object')
+    if isinstance(value, numpy.ndarray):
         if value.dtype.name != 'object':
             if issubclass(child_type, Arrayable):
                 return numpy.array([child_type.from_array(array) for array in value], dtype='object')
-            else:
-                raise ValueError(
-                    'Attribute {} of array type functionality belonging to class {} got an ndarray of dtype {},'
-                    'and child type is not a subclass of Arrayable.'.format(
-                        name, instance.__class__.__name__, value.dtype))
-        elif len(value.shape) != 1:
             raise ValueError(
-                'Attribute {} of array type functionality belonging to class {} got an ndarray of shape {},'
-                'but requires a one dimensional array.'.format(
-                    name, instance.__class__.__name__, value.shape))
-        elif not isinstance(value[0], child_type):
+                f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got an ndarray of dtype {value.dtype}, and child type is not a subclass of Arrayable.'
+            )
+        if len(value.shape) != 1:
+            raise ValueError(
+                f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got an ndarray of shape {value.shape}, but requires a one dimensional array.'
+            )
+        if not isinstance(value[0], child_type):
             raise TypeError(
-                'Attribute {} of array type functionality belonging to class {} got an ndarray containing '
-                'first element of incompatible type {}.'.format(
-                    name, instance.__class__.__name__, type(value[0])))
+                f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got an ndarray containing first element of incompatible type {type(value[0])}.'
+            )
         return value
-    elif isinstance(value, ElementTree.Element):
+    if isinstance(value, ElementTree.Element):
         xml_ns = getattr(instance, '_xml_ns', None)
-        if hasattr(instance, '_child_xml_ns_key'):
-            # noinspection PyProtectedMember
-            xml_ns_key = instance._child_xml_ns_key.get(name, getattr(instance, '_xml_ns_key', None))
-        else:
-            xml_ns_key = getattr(instance, '_xml_ns_key', None)
-        # this is the parent node from XML deserialization
-        size = int(value.attrib.get('size', -1))  # NB: Corner Point arrays don't have
-        # extract child nodes at top level
+        xml_ns_key = getattr(instance, '_child_xml_ns_key', {}).get(name, getattr(instance, '_xml_ns_key', None))
+        size = int(value.attrib.get('size', -1))
         child_nodes = find_children(value, child_tag, xml_ns, xml_ns_key)
-
-        if size == -1:  # fill in, if it's missing
+        if size == -1:
             size = len(child_nodes)
         if len(child_nodes) != size:
             raise ValueError(
-                'Attribute {} of array type functionality belonging to class {} got a ElementTree element '
-                'with size attribute {}, but has {} child nodes with tag {}.'.format(
-                    name, instance.__class__.__name__, size, len(child_nodes), child_tag))
-        new_value = numpy.empty((size, ), dtype='object')
+                f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got a ElementTree element with size attribute {size}, but has {len(child_nodes)} child nodes with tag {child_tag}.'
+            )
+        new_value = numpy.empty((size,), dtype='object')
         for i, entry in enumerate(child_nodes):
             new_value[i] = child_type.from_node(entry, xml_ns, ns_key=xml_ns_key)
         return new_value
-    elif isinstance(value, (list, tuple)):
-        # this would arrive from users or json deserialization
+    if isinstance(value, (list, tuple)):
         if len(value) == 0:
             return numpy.empty((0,), dtype='object')
-        elif isinstance(value[0], child_type):
+        if isinstance(value[0], child_type):
             return numpy.array(value, dtype='object')
-        elif isinstance(value[0], dict):
-            # NB: charming errors are possible here if something stupid has been done.
+        if isinstance(value[0], dict):
             return numpy.array([child_type.from_dict(node) for node in value], dtype='object')
-        elif isinstance(value[0], (numpy.ndarray, list, tuple)):
+        if isinstance(value[0], (numpy.ndarray, list, tuple)):
             if issubclass(child_type, Arrayable):
                 return numpy.array([child_type.from_array(array) for array in value], dtype='object')
             elif hasattr(child_type, 'Coefs'):
                 return numpy.array([child_type(Coefs=array) for array in value], dtype='object')
-            else:
-                raise ValueError(
-                    'Attribute {} of array type functionality belonging to class {} got an list '
-                    'containing elements type {} and construction failed.'.format(
-                        name, instance.__class__.__name__, type(value[0])))
-        else:
-            raise TypeError(
-                'Attribute {} of array type functionality belonging to class {} got a list containing first '
-                'element of incompatible type {}.'.format(name, instance.__class__.__name__, type(value[0])))
-    else:
+            raise ValueError(
+                f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got a list containing elements type {type(value[0])} and construction failed.'
+            )
         raise TypeError(
-            'Attribute {} of array type functionality belonging to class {} got incompatible type {}.'.format(
-                name, instance.__class__.__name__, type(value)))
+            f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got a list containing first element of incompatible type {type(value[0])}.'
+        )
+    raise TypeError(
+        f'Attribute {name} of array type functionality belonging to class {instance.__class__.__name__} got incompatible type {type(value)}.'
+    )
 
 
 def parse_serializable_list(value, name, instance, child_type):
+    """
+    Helper for parsing a list of serializable objects from various input types.
+
+    Parameters
+    ----------
+    value : None|child_type|ElementTree.Element|list|dict
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
+    instance :
+        The class of the variable (used in error message).
+    child_type :
+        The expected serializable type for list elements.
+
+    Returns
+    -------
+    list
+        List of child_type objects.
+
+    Raises
+    ------
+    TypeError
+        If value is not a supported type or cannot be converted.
+    """
     if value is None:
         return None
     if isinstance(value, child_type):
-        # this is the child element
-        return [value, ]
-
+        return [value]
     xml_ns = getattr(instance, '_xml_ns', None)
-    if hasattr(instance, '_child_xml_ns_key'):
-        # noinspection PyProtectedMember
-        xml_ns_key = instance._child_xml_ns_key.get(name, getattr(instance, '_xml_ns_key', None))
-    else:
-        xml_ns_key = getattr(instance, '_xml_ns_key', None)
+    xml_ns_key = getattr(instance, '_child_xml_ns_key', {}).get(name, getattr(instance, '_xml_ns_key', None))
     if isinstance(value, ElementTree.Element):
-        # this is the child
-        return [child_type.from_node(value, xml_ns, ns_key=xml_ns_key), ]
-    elif isinstance(value, list) or isinstance(value[0], child_type):
+        return [child_type.from_node(value, xml_ns, ns_key=xml_ns_key)]
+    if isinstance(value, list):
         if len(value) == 0:
-            return value
-        elif isinstance(value[0], child_type):
-            return [entry for entry in value]
-        elif isinstance(value[0], dict):
-            # NB: charming errors are possible if something stupid has been done.
+            return []
+        first = value[0]
+        if isinstance(first, child_type):
+            return list(value)
+        if isinstance(first, dict):
             return [child_type.from_dict(node) for node in value]
-        elif isinstance(value[0], ElementTree.Element):
+        if isinstance(first, ElementTree.Element):
             return [child_type.from_node(node, xml_ns, ns_key=xml_ns_key) for node in value]
-        else:
-            raise TypeError(
-                'Field {} of list type functionality belonging to class {} got a '
-                'list containing first element of incompatible type '
-                '{}.'.format(name, instance.__class__.__name__, type(value[0])))
-    else:
         raise TypeError(
-            'Field {} of class {} got incompatible type {}.'.format(
-                name, instance.__class__.__name__, type(value)))
+            f'Field {name} of list type functionality belonging to class {instance.__class__.__name__} got a '
+            f'list containing first element of incompatible type {type(first)}.'
+        )
+    raise TypeError(
+        f'Field {name} of class {instance.__class__.__name__} got incompatible type {type(value)}.'
+    )
 
 
 def parse_parameters_collection(value, name, instance):
+    """
+    Helper for parsing a parameters collection from various input types.
+
+    Parameters
+    ----------
+    value : None|dict|list[ElementTree.Element]
+        The value to parse.
+    name : str
+        Name of the field (used in error message).
+    instance :
+        The class of the variable (used in error message).
+
+    Returns
+    -------
+    dict or OrderedDict
+        Dictionary of parameters.
+
+    Raises
+    ------
+    TypeError
+        If value is not a supported type or cannot be converted.
+    """
     if value is None:
         return None
     if isinstance(value, dict):
         return value
-    elif isinstance(value, list):
+    if isinstance(value, list):
         out = OrderedDict()
-        if len(value) == 0:
+        if not value:
             return out
         if isinstance(value[0], ElementTree.Element):
             for entry in value:
                 out[entry.attrib['name']] = get_node_value(entry)
             return out
-        else:
-            raise TypeError(
-                'Field {} of list type functionality belonging to class {} got a '
-                'list containing first element of incompatible type '
-                '{}.'.format(name, instance.__class__.__name__, type(value[0])))
-    else:
         raise TypeError(
-            'Field {} of class {} got incompatible type {}.'.format(
-                name, instance.__class__.__name__, type(value)))
-
+            f'Field {name} of list type functionality belonging to class {instance.__class__.__name__} got a '
+            f'list containing first element of incompatible type {type(value[0])}.'
+        )
+    raise TypeError(
+        f'Field {name} of class {instance.__class__.__name__} got incompatible type {type(value)}.'
+    )
 
 ##################
 # Main class defining structure
