@@ -59,6 +59,10 @@ class SIOReader(object):
         self._data_type_code     = int.from_bytes(self._fid.read(4), byteorder=byte_order)
         # Set the data type and size from the code in the header.
         self._sio_code_to_numpy_data_type()
+        if byte_order == 'little':
+            self._data_type_str = '<' + self._data_type_str
+        else:
+            self._data_type_str = '>' + self._data_type_str
         self._data_size          = int.from_bytes(self._fid.read(4), byteorder=byte_order)
         self._user_data          = None
         self._sicdmeta           = None
@@ -84,18 +88,14 @@ class SIOReader(object):
             self._image_data  = numpy.frombuffer(self._fid.read(),
                                                      dtype=self._data_type_str
                                                      ).reshape(self._rows,
-                                                               self._columns,
-                                                               2)
+                                                               self._columns)
         elif self._magic_key in [0xFE7F01FF, 0xFD7F02FF]:
             # SIO file image data written as little endian
-            temp_image_data   = self._fid.read()
             # Reverse the bytes ingested from little endian to big
-            self._image_data  = numpy.array(temp_image_data[::-1], 
-                                            dtype=self._data_type_str
-                                            ).reshape(
-                                                self._rows, 
-                                                self._columns,
-                                                2)
+            self._image_data  = numpy.frombuffer(self._fid.read(),
+                                                     dtype=self._data_type_str
+                                                     ).reshape(self._rows,
+                                                               self._columns)
         else:
             raise SarpyIOError('Magic Key {} is not valid'.format(
                 self._magic_key))
@@ -107,14 +107,13 @@ class SIOReader(object):
         """
         match self._data_type_code:
             case 1:
-                self._data_type_str = 'int16'
-                self._data_size     = 2
+                self._data_type_str = 'u1'
+            case 2:
+                self._data_type_str = 'i2'
             case 3:
-                self._data_type_str = 'float32'
-                self._data_size     = 8
-            case 13:
-                self._data_type_str = 'complex64'
-                self._data_size     = 16
+                self._data_type_str = 'f4'
+            case 11 | 12 | 13:
+                self._data_type_str = 'c8'
             case _ : #Default if other cases don't match
-                raise TypeError('Writer only recognizes floats, complex and ' + \
+                raise TypeError('Reader only recognizes floats, complex and ' + \
                                 'signed or unsigned integers')        

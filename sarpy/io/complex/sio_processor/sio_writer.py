@@ -5,6 +5,7 @@ __author__ = "Tex Peterson"
 
 import numpy
 import os
+import sys
 
 from sarpy.io.complex.sicd_elements.SICD import SICDType
 from sarpy.io.general.base import SarpyIOError
@@ -55,7 +56,7 @@ class SIOWriter(object):
     output_file_name = "SIOWriterExampleOutput.sio"
 
     my_sio_writer = SIOWriter(str(output_file_name), example_image_data, 
-        example_sicd_meta_data)
+        example_sicd_meta_data, param_start_indices=[0, 0])
     my_sio_writer.write()
     my_sio_writer.close()
     """
@@ -65,6 +66,7 @@ class SIOWriter(object):
             param_filename:              str, 
             param_image_data:            numpy.array, 
             param_sicdmeta:              SICDType|None = None,
+            param_start_indices:         list          = [0, 0],
             param_include_sicd_metadata: bool          = True
     ):
         """
@@ -78,6 +80,10 @@ class SIOWriter(object):
 
         param_sicdmeta:
             SICD meta data in a SICDType object.
+
+        param_start_indices:
+            The indicices of the image data where you want to start writing from.
+            This is used to skip over unwanted parts of the image.
 
         param_include_sicd_metadata: 
             A boolean value used to indicate if the SICD metadata is to be 
@@ -97,20 +103,33 @@ class SIOWriter(object):
             self._sicdmeta_xml_bytes = param_sicdmeta.to_xml_bytes()
         else:
             self._sicdmeta_xml_bytes = None
+        self._start_indices          = param_start_indices
         self._include_sicd_metadata  = param_include_sicd_metadata
         
         # The default SIO header is 20 bytes
         # It is comprised of 5 uint32 words, which are 4 bytes
         self._header_skip            = 20
-
+        # Determine the endianness of the system
+        self._endianness = sys.byteorder
+        # Check dtype of _image_data numpy array incase the endianness was set  
+        # differently than the system default.
+        if self._image_data.dtype.byteorder == '<':
+            self._endianness = 'little'
+        if self._image_data.dtype.byteorder == '>':
+            self._endianness = 'big'
         # Set the magic key and increase the _header_skip if there is user data.
-        # We always write big-endian
         if self._sicdmeta_xml_bytes is not None and self._include_sicd_metadata:
             self._header_skip = self._header_skip + 4 + 4 + 8 + 4 + \
                 len(self._sicdmeta_xml_bytes) # Add user data length
-            self._magic_key   = 0xFF027FFD # Indicates big endian, with user-data
+            if self._endianness == "big":
+                self._magic_key   = 0xFF027FFD # Indicates big endian, with user-data
+            else:
+                self._magic_key   = 0xFD7F02FF # Indicates little endian, with user-data
         else:
-            self._magic_key  = 0xFF017FFE # Indicates big endian, with no user-data
+            if self._endianness == "big":
+                self._magic_key  = 0xFF017FFE # Indicates big endian, with no user-data
+            else :
+                self._magic_key  = 0xFE7F01FF # Indicates little endian, with no user-data
         self._image_shape    = self._image_data.shape
         
         # Data type and size
@@ -125,16 +144,19 @@ class SIOWriter(object):
         """
         Private function: Given the numpy data type from the _image_data, set the data type code and size.
         """
-        match self._image_data.dtype:
-            case 'int16':
+        match self._image_data.dtype.name:
+            case 'uint8':
                 self._data_type_code = 1
+                self._data_size      = 1
+            case 'int16':
+                self._data_type_code = 2
                 self._data_size      = 2
             case 'float32':
                 self._data_type_code = 3
-                self._data_size      = 8
+                self._data_size      = 4
             case 'complex64':
                 self._data_type_code = 13
-                self._data_size      = 16
+                self._data_size      = 8
             case _ : #Default if other cases don't match
                 raise TypeError('Writer only recognizes floats, complex and signed or unsigned integers')
                 
@@ -166,23 +188,28 @@ class SIOWriter(object):
         """
 
         # Write the header in order as defined above.
+        # Write the _magic_key, which is alreay in proper byte order so don't 
+        # set byteorder
         self._fid.write(self._magic_key.to_bytes(4))
+        # For remaining numerical values, include byteorder indicator to 
+        # properly format the endianness to be consistent with the endianness
+        # of the _image_data numpy array.
         # Rows and columns
-        self._fid.write(self._image_shape[0].to_bytes(4))
-        self._fid.write(self._image_shape[1].to_bytes(4))
+        self._fid.write(self._image_shape[0].to_bytes(4, byteorder=self._endianness))
+        self._fid.write(self._image_shape[1].to_bytes(4, byteorder=self._endianness))
         # Data type information
-        self._fid.write(self._data_type_code.to_bytes(4))
-        self._fid.write(self._data_size.to_bytes(4))
+        self._fid.write(self._data_type_code.to_bytes(4, byteorder=self._endianness))
+        self._fid.write(self._data_size.to_bytes(4, byteorder=self._endianness))
         # User data
         if self._sicdmeta_xml_bytes is not None and self._include_sicd_metadata:
             # Num pairs of user data, always 1 because we only write 1 SICD at a time.
-            self._fid.write((1).to_bytes(4))                  
-            self._fid.write((8).to_bytes(4))                 # Name length
+            self._fid.write((1).to_bytes(4, byteorder=self._endianness))
+            self._fid.write((8).to_bytes(4, byteorder=self._endianness)) # Name length
             self._fid.write('SICDMETA'.encode('utf-8'))      # Always SICDMEATA
-            self._fid.write(len(self._sicdmeta_xml_bytes).to_bytes(4)) 
+            self._fid.write(len(self._sicdmeta_xml_bytes).to_bytes(4, byteorder=self._endianness)) 
             self._fid.write(self._sicdmeta_xml_bytes)  
 
-        num_bytes_written = self._fid.write(self._image_data)
+        num_bytes_written = self._fid.write(self._image_data.tobytes())
         return num_bytes_written
     
     def close(self):
